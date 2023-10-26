@@ -43,10 +43,6 @@ function bos {
             shift
             bos_edit "$@"
             ;;
-        job*)
-            shift
-            bos_job "$@"
-            ;;
         li*)
             shift
             bos_list "$@"
@@ -58,6 +54,10 @@ function bos {
         sho*)
             shift
             bos_describe "$@"
+            ;;
+        sum*)
+            shift
+            bos_summary "$@"
             ;;
         shutdown)
             shift
@@ -78,11 +78,11 @@ function bos_help {
     echo -e "\tconfig [template] [nodes|groups] : Configure the given nodes with the given bos template"
     echo -e "\tedit [template] : edit a bos session template"
     echo -e "\tdescribe [template] : (same as show)"
-    echo -e "\tjob [action]: Manage bos jobs"
     echo -e "\tlist : show all bos session templates"
     echo -e "\treboot [template] [nodes|groups] : reboot a given node into the given bos template"
     echo -e "\tshutdown [template] [nodes|groups] : shutdown a given node into the given bos template"
     echo -e "\tshow [template] : show details of session template"
+    echo -e "\tsummary <-l> [template] : Show current bos node transition states"
 
     exit 1
 }
@@ -217,9 +217,9 @@ function bos_clone {
     tmpdir
     TMPFILE="$TMPDIR/bos_sessiontemplate.json"
 
-    bos_describe $SRC > "$TMPFILE"
+    bos_describe $SRC | jq 'del(.name)' > "$TMPFILE"
 
-    cray bos sessiontemplate create --name $DEST --file "$TMPFILE" --format json
+    cray bos sessiontemplates create --file "$TMPFILE" --format json $DEST
     set +e
 }
 
@@ -232,10 +232,10 @@ function bos_update_template {
     setup_craycli
 
     set -e
-    bos_describe "$TEMPLATE" > "$BOS_CONFIG_DIR/$TEMPLATE.json"
+    bos_describe "$TEMPLATE" | jq 'del(.name)' > "$BOS_CONFIG_DIR/$TEMPLATE.json"
     json_set_field "$BOS_CONFIG_DIR/$TEMPLATE.json" "$KEY" "$VALUE"
-    cray bos sessiontemplate create --name $TEMPLATE --file "$BOS_CONFIG_DIR/$TEMPLATE.json" > /dev/null 2>&1
-    bos_describe "$TEMPLATE" > "$BOS_CONFIG_DIR/$TEMPLATE.json"
+    cray bos sessiontemplates create --file "$BOS_CONFIG_DIR/$TEMPLATE.json" $TEMPLATE > /dev/null 2>&1
+    bos_describe "$TEMPLATE" | jq 'del(.name)' > "$BOS_CONFIG_DIR/$TEMPLATE.json"
     cat "$BOS_CONFIG_DIR/$TEMPLATE.json" | jq "$KEY" > /dev/null
     set +e
     return $?
@@ -254,7 +254,7 @@ function bos_edit {
     bos_exit_if_not_valid "$CONFIG"
 
     set -e
-    bos_describe $CONFIG > "$BOS_CONFIG_DIR/$CONFIG.json"
+    bos_describe $CONFIG | jq 'del(.name)' > "$BOS_CONFIG_DIR/$CONFIG.json"
 
     if [[ ! -s "$BOS_CONFIG_DIR/$CONFIG.json" ]]; then
         rm -f "$BOS_CONFIG_DIR/$CONFIG.json"
@@ -265,7 +265,7 @@ function bos_edit {
     edit_file "$BOS_CONFIG_DIR/$CONFIG.json" 'json'
     if [[ "$?" == 0 ]]; then
         echo -n "Updating '$CONFIG' with new data..."
-        verbose_cmd cray bos sessiontemplate create --name $CONFIG --file "$BOS_CONFIG_DIR/$CONFIG.json" --format json > /dev/null 2>&1
+        verbose_cmd cray bos sessiontemplates create --file "$BOS_CONFIG_DIR/$CONFIG.json" --format json $CONFIG > /dev/null 2>&1
         echo 'done'
     else
         echo "No modifications made. Not pushing changes up"
@@ -301,28 +301,33 @@ function bos_action {
     #cfs_clear_node_counters "${TARGET[@]}"
 
     bos_exit_if_not_valid "$TEMPLATE"
-    KUBE_JOB_ID=$(cray bos session create --operation "$ACTION" --template-uuid "$TEMPLATE" --limit "$TARGET_STRING"  --format json | jq '.links' | jq '.[].jobId' | grep -v null | sed 's/"//g')
-    if [[ -z "$KUBE_JOB_ID" ]]; then
-        die "Failed to create bos session"
-    fi
-    BOS_SESSION=$(echo "$KUBE_JOB_ID" | sed 's/^boa-//g')
-
-
-    # if booting more than one node, just call it by the template name
-    if [[ "${#TARGET}" -ge 2 ]]; then
-        LOGFILE="$BOOT_LOGS/$ACTION-$TEMPLATE.log"
-    else
-        LOGFILE="$BOOT_LOGS/$ACTION-${TARGET[0]}.log"
+    cray bos sessions create --operation "$ACTION" --template-name "$TEMPLATE" --limit "$TARGET_STRING"  --format json
+    if [[ $? -ne 0 ]]; then
+        die "Failed to initiate bos action"
     fi
 
-    mkdir -p "$BOOT_LOGS"
-    bos_job_log "$BOS_SESSION" > "$LOGFILE" 2>&1 &
-    echo "$ACTION action initiated. details:"
-    echo "BOS Session: $BOS_SESSION"
-    echo "kubernetes pod: $POD"
-    echo
-    echo "Starting $ACTION..."
-    echo "Boot Logs: '$LOGFILE'"
+    echo "$ACTION action initiated."
     echo
 }
 
+function bos_summary {
+    OPTIND=1
+    local LONG=0
+    while getopts "l" OPTION ; do
+        case "$OPTION" in
+            l) LONG=1 ;;
+            \?) echo "$0 bos summary [OPTIONS]"
+		echo "OPTIONS:"
+		echo "\t-l : list node names"
+                return 1
+            ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    if [[ "$LONG" -eq 1 ]]; then
+	cray bos components list --format json | jq -r '.[] | "\(.id) \(.desired_state.configuration) \(.status.status)/\(.status.phase)"'
+    else
+         cray bos components list --format json | jq -r '.[] | "\(.desired_state.configuration) \(.status.status)/\(.status.phase)"'| sort | uniq -c
+    fi
+}
