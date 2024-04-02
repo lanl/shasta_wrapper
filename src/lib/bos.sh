@@ -313,6 +313,7 @@ function bos_action {
 function bos_summary {
     OPTIND=1
     local LONG=0
+    declare -A OUTPUT
     while getopts "l" OPTION ; do
         case "$OPTION" in
             l) LONG=1 ;;
@@ -324,10 +325,37 @@ function bos_summary {
         esac
     done
     shift $((OPTIND-1))
+    hsm_refresh_node_state
 
-    if [[ "$LONG" -eq 1 ]]; then
-	cray bos components list --format json | jq -r '.[] | "\(.id) \(.desired_state.configuration) \(.status.status)/\(.status.phase)"'
-    else
-         cray bos components list --format json | jq -r '.[] | "\(.desired_state.configuration) \(.status.status)/\(.status.phase)"'| sort | uniq -c
-    fi
+    IFS=$'\n'
+    BOS_NODE_DATA=( $(cray bos components list --format json | jq -r '.[] | "\(.id) \(.status.status)/\(.status.phase)"') )
+    IFS=$' \t\n'
+
+    for NODE_DATA in "${BOS_NODE_DATA[@]}"; do
+        SPLIT=( $NODE_DATA )
+	NODE="${SPLIT[0]}"
+	STATUS="${SPLIT[1]}"
+	N_GROUP="${NODE2GROUP[$NODE]}"
+
+	if [[ "$LONG" -eq 0 ]]; then
+	    NODE_STRING="$STATUS"
+	else
+	    NODE_STRING="$NODE $STATUS"
+        fi
+	if [[ -z "${OUTPUT[$N_GROUP]}" ]]; then
+            OUTPUT[$N_GROUP]="$NODE_STRING"
+	else
+            OUTPUT[$N_GROUP]+="\n$NODE_STRING"
+        fi
+    done
+
+    for N_GROUP in "${!OUTPUT[@]}"; do
+	echo "$N_GROUP:"
+	if [[ "$LONG" -eq 0 ]]; then
+            echo -e "${OUTPUT[$N_GROUP]}" | sort | uniq -c
+        else
+            echo -e "${OUTPUT[$N_GROUP]}" 
+	fi
+	echo
+    done
 }
