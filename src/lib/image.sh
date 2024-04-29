@@ -14,6 +14,8 @@
 
 declare -A IMAGE_ID2NAME
 declare -A IMAGE_ID2CREATED
+declare -A IMAGE_CACHE
+IMAGE_CACHE_FILE="/etc/shasta_wrapper/images.cache"
 
 IMAGE_LOGDIR="/var/log/image/"`date '+%Y%m%d-%H%M%S'`
 
@@ -252,12 +254,6 @@ function image_build {
     fi
     CONFIG_IMAGE_ID="$RETURN"
 
-    if [[ -z "$FROM_IMAGE" ]]; then
-        echo "[$GROUP_NAME] Deleting bare image, as it's no longer needed."
-        image_delete "$BARE_IMAGE_ID" > /dev/null 2>&1
-    fi
-
-
     if [[ -n "$BOS_TEMPLATE" ]]; then
         image_map "$BOS_TEMPLATE" "$CONFIG_IMAGE_ID" "$GROUP_NAME"
     fi
@@ -329,6 +325,14 @@ function image_build_bare {
     if [[ -z "$NEW_IMAGE_NAME" ]]; then
         NEW_IMAGE_NAME="img_$RECIPE_NAME"
     fi
+    if [[ -n "$CONFIG_ENABLE_IMAGE_CACHE" ]]; then
+	refresh_bare_image_cache
+	if [[ -n "${IMAGE_CACHE[$RECIPE_ID]}" ]]; then
+            echo "[$GROUP_NAME] Using cached bare image: $IMAGE_ID" 1>&2
+            echo "[$GROUP_NAME] Using cached bare image: $IMAGE_ID"
+            RETURN="$IMAGE_ID"
+	fi
+    fi
     setup_craycli
 
     cluster_defaults_config
@@ -380,8 +384,11 @@ function image_build_bare {
 
     verbose_cmd image_job_delete $IMS_JOB_ID
 
+
     echo "[$GROUP_NAME] Bare image Created: $IMAGE_ID" 1>&2
     echo "[$GROUP_NAME] Bare image Created: $IMAGE_ID"
+    update_image_cache "$RECIPE_ID" "$IMAGE_ID"
+
     RETURN="$IMAGE_ID"
     return 0
 }
@@ -584,6 +591,33 @@ function image_clean_deleted_artifacts {
     for artifact in "${ARTIFACTS[@]}"; do
         cray artifacts delete boot-images --format json "$artifact" | grep -P '\S'
     done
+}
+
+function refresh_bare_image_cache {
+    if [[ -z "${IMAGE_CACHE[@]}" && -f "$IMAGE_CACHE_FILE" ]]; then
+        source "$IMAGE_CACHE_FILE" || return
+    fi
+}
+
+function update_image_cache {
+    local RECIPE="$1"
+    local IMAGE="$2"
+    local RECIPE_KEY
+
+    get_bare_image_cache
+
+    IMAGE_CACHE[$RECIPE]="$IMAGE"
+
+
+    IMAGE_CACHE_TMPFILE="${IMAGE_CACHE_FILE}.tmp"
+    {
+        flock -x 3
+        echo "declare -A IMAGE_CACHE" > "$IMAGE_CACHE_TMPFILE"
+        for RECIPE_KEY in "${!IMAGE_CACHE[@]}"; do
+            echo "IMAGE_CACHE[$RECIPE_KEY]=${IMAGE_CACHE[$RECIPE_KEY]}" >> "$IMAGE_CACHE_TMPFILE"
+        done
+	mv "$IMAGE_CACHE_TMPFILE" "$IMAGE_CACHE_FILE"
+    } 3<"$IMAGE_CACHE_FILE"
 }
 
 ## image_defaults
