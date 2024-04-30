@@ -259,8 +259,8 @@ function group_build_images {
         if [[ "$1" == "--map" ]]; then
             MAP="0"
             shift
-	elif [[ "$1" == "--nocache" ]]; then
-            CONFIG_ENABLE_IMAGE_CACHE=""
+	elif [[ "$1" == "--cache" ]]; then
+            CONFIG_ENABLE_IMAGE_CACHE="1"
             shift
 	elif [[ "$1" == "--build_group" ]]; then
             if [[ -z "$2" ]]; then
