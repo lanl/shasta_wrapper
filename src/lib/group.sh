@@ -12,8 +12,7 @@
 # derivative works, distribute copies to the public, perform publicly and display publicly, and to permit
 # others to do so.
 
-declare -A NODE2GROUP GROUP2NODES
-
+declare -A NODE2GROUP GROUP2NODES BUILD_GROUPS
 
 function group {
     case "$1" in
@@ -255,18 +254,48 @@ function group_describe {
 ## group_build_images
 # build images for a given group or all the ones with defaults defined
 function group_build_images {
-    local MAP="1"
-    if [[ "$1" == "--map" ]]; then
-        MAP="0"
+    local MAP="1" ARG BUILD_GROUP="Default"
+    for ARG in "$@"; do
+        if [[ "$1" == "--map" ]]; then
+            MAP="0"
+            shift
+	elif [[ "$1" == "--nocache" ]]; then
+            CONFIG_ENABLE_IMAGE_CACHE=""
+            shift
+	elif [[ "$1" == "--build_group" ]]; then
+            if [[ -z "$2" ]]; then
+	        echo "Option --build_group requires an argument"
+		exit 1
+	    fi
+            BUILD_GROUP="$2"
+            shift
+            shift
+	elif [[ "$1" = -* ]]; then
+	    echo "$0 group build_images <OPTIONS> <group list>"
+	    echo "OPTIONS:"
+	    echo "\t--map : update the bos templates with the new image(s) that are built"
+	    echo "\t--nocache : Do ot grab bare images from the cache"
+	    return 1
+	fi
+    done
 
-        shift
-    fi
     local GROUP_LIST=( "$@" )
     local MAP_TARGET IMAGE_GROUP
     cluster_defaults_config
 
+    if [[ -n "$BUILD_GROUP" && "$BUILD_GROUP" != "Default" ]]; then
+        if [[ -z "${BUILD_GROUPS[$BUILD_GROUP]}" ]]; then
+	    echo "BUILD_GROUPS[$BUILD_GROUP] is not defined in /etc/shasta_wrapper/cluster_defaults.conf"
+	    exit 1
+	fi
+    fi
+    
     if [[ -z "${GROUP_LIST[@]}" ]]; then
-	GROUP_LIST=( $(echo "${!BOS_DEFAULT[@]}" "${!IMAGE_DEFAULT[@]}" | sort -u ) )
+        if [[ -n "${BUILD_GROUPS[$BUILD_GROUP]}" ]]; then
+		GROUP_LIST=( ${BUILD_GROUPS[$BUILD_GROUP]} )
+	else
+            GROUP_LIST=( $(echo "${!BOS_DEFAULT[@]}" "${!IMAGE_DEFAULT[@]}" | sort -u ) )
+	fi
     fi
 
     echo "## Validating current setup before trying to build anything... (Should take a few seconds)"
@@ -332,3 +361,4 @@ function group_summary {
         echo ""
     done
 }
+
