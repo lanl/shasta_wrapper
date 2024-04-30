@@ -14,6 +14,8 @@
 
 declare -A IMAGE_ID2NAME
 declare -A IMAGE_ID2CREATED
+declare -A IMAGE_CACHE
+IMAGE_CACHE_FILE="/etc/shasta_wrapper/images.cache"
 
 IMAGE_LOGDIR="/var/log/image/"`date '+%Y%m%d-%H%M%S'`
 
@@ -153,7 +155,7 @@ function image_delete {
 function image_build {
     local EX_HOST BARE_IMAGE_ID CONFIG_IMAGE_ID CONFIG_JOB_NAME RECIPE_ID GROUP_NAME CONFIG_NAME NEW_IMAGE_NAME BOS_TEMPLATE FROM_IMAGE BSS_MAP IMAGE_GROUPS
     OPTIND=1
-    while getopts "bc:g:G:i:m:r:t:I:" OPTION ; do
+    while getopts "bc:g:G:i:m:r:t:I:C" OPTION ; do
         case "$OPTION" in
             b) BSS_MAP=1 ;;
             c) CONFIG_NAME="$OPTARG" ;;
@@ -162,6 +164,7 @@ function image_build {
             i) NEW_IMAGE_NAME="$OPTARG" ;;
             I) FROM_IMAGE="$OPTARG" ;;
             m) BOS_TEMPLATE="$OPTARG" ;;
+            C) CONFIG_ENABLE_IMAGE_CACHE='1' ;;
             r) RECIPE_ID="$OPTARG" ;;
             t) CONFIG_TAG="$OPTARG" ;;
             \?) die 1 "cfs_apply:  Invalid option:  -$OPTARG" ; return 1 ;;
@@ -198,6 +201,7 @@ function image_build {
         echo "USAGE: $0 image build <OPTIONS> [recipe id] [group] [config] <image name> <bos template to map to>" 1>&2
         echo "OPTIONS:"
         echo -e "\t -c <cfs config> - Configure the image with this cfs configuration"
+        echo -e "\t -C - Use image cache"
         echo -e "\t -i <image name> - Base name to use for the created image"
         echo -e "\t -I <image id> - Image to start with instead of making a new one"
         echo -e "\t -m <bos template> - Map the final built image to this bos template"
@@ -251,12 +255,6 @@ function image_build {
         die "[$GROUP_NAME] configure image failed... Not continuing"
     fi
     CONFIG_IMAGE_ID="$RETURN"
-
-    if [[ -z "$FROM_IMAGE" ]]; then
-        echo "[$GROUP_NAME] Deleting bare image, as it's no longer needed."
-        image_delete "$BARE_IMAGE_ID" > /dev/null 2>&1
-    fi
-
 
     if [[ -n "$BOS_TEMPLATE" ]]; then
         image_map "$BOS_TEMPLATE" "$CONFIG_IMAGE_ID" "$GROUP_NAME"
@@ -329,6 +327,19 @@ function image_build_bare {
     if [[ -z "$NEW_IMAGE_NAME" ]]; then
         NEW_IMAGE_NAME="img_$RECIPE_NAME"
     fi
+    if [[ -n "$CONFIG_ENABLE_IMAGE_CACHE" ]]; then
+        get_bare_image_cache
+	if [[ -n "${IMAGE_CACHE[$RECIPE_ID]}" ]]; then
+            image_describe "${IMAGE_CACHE[$RECIPE_ID]}" > /dev/null 2>&1
+            if [[ $? -eq 0 ]]; then
+                echo "[$GROUP_NAME] Using cached bare image: ${IMAGE_CACHE[$RECIPE_ID]}" 1>&2
+                echo "[$GROUP_NAME] Using cached bare image: ${IMAGE_CACHE[$RECIPE_ID]}"
+                RETURN="${IMAGE_CACHE[$RECIPE_ID]}"
+                return
+            fi
+	fi
+	echo "No image found in cache, building a new one..."
+    fi
     setup_craycli
 
     cluster_defaults_config
@@ -380,8 +391,11 @@ function image_build_bare {
 
     verbose_cmd image_job_delete $IMS_JOB_ID
 
+
     echo "[$GROUP_NAME] Bare image Created: $IMAGE_ID" 1>&2
     echo "[$GROUP_NAME] Bare image Created: $IMAGE_ID"
+    update_image_cache "$RECIPE_ID" "$IMAGE_ID"
+
     RETURN="$IMAGE_ID"
     return 0
 }
@@ -586,6 +600,33 @@ function image_clean_deleted_artifacts {
     done
 }
 
+function get_bare_image_cache {
+    if [[ -z "${IMAGE_CACHE[@]}" && -f "$IMAGE_CACHE_FILE" ]]; then
+        source "$IMAGE_CACHE_FILE" || return
+    fi
+}
+
+function update_image_cache {
+    local RECIPE="$1"
+    local IMAGE="$2"
+    local RECIPE_KEY
+
+    get_bare_image_cache
+
+    IMAGE_CACHE[$RECIPE]="$IMAGE"
+
+    touch "$IMAGE_CACHE_FILE"
+    IMAGE_CACHE_TMPFILE="${IMAGE_CACHE_FILE}.tmp"
+    {
+        flock -x 3
+        echo "" > "$IMAGE_CACHE_TMPFILE"
+        for RECIPE_KEY in "${!IMAGE_CACHE[@]}"; do
+            echo "IMAGE_CACHE[$RECIPE_KEY]=${IMAGE_CACHE[$RECIPE_KEY]}" >> "$IMAGE_CACHE_TMPFILE"
+        done
+	mv "$IMAGE_CACHE_TMPFILE" "$IMAGE_CACHE_FILE"
+    } 3<"$IMAGE_CACHE_FILE"
+}
+
 ## image_defaults
 # Get and set the currently used images for each group and set that in the CUR_IMAGE_NAME and CUR_IMAGE_ID variables.
 function image_defaults {
@@ -612,4 +653,3 @@ function image_defaults {
         fi
     done
 }
-
