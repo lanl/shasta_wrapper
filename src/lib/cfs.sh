@@ -472,7 +472,7 @@ function cfs_update_git {
     cd "$TMPDIR"
     git clone "$URL" "$TMPDIR/$LAYER" || return 1
     cd "$TMPDIR/$LAYER"
-    git checkout "$GIT_TARGET" || return 1
+    git -c advice.detachedHead=false checkout "$GIT_TARGET" || return 1
 
     NEW_COMMIT=$(git rev-parse HEAD)
     if [[ "$LAYER_CUR_COMMIT" != "$NEW_COMMIT" ]]; then
