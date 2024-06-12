@@ -217,7 +217,7 @@ function bos_clone {
     tmpdir
     TMPFILE="$TMPDIR/bos_sessiontemplate.json"
 
-    bos_describe $SRC | jq 'del(.name)' > "$TMPFILE"
+    bos_describe $SRC | jq 'del(.name)' | jq 'del(.tenant)' > "$TMPFILE"
 
     cray bos sessiontemplates create --file "$TMPFILE" --format json $DEST
     set +e
@@ -254,7 +254,7 @@ function bos_edit {
     bos_exit_if_not_valid "$CONFIG"
 
     set -e
-    bos_describe $CONFIG | jq 'del(.name)' > "$BOS_CONFIG_DIR/$CONFIG.json"
+    bos_describe $CONFIG | jq 'del(.name)' | jq 'del(.tenant)' > "$BOS_CONFIG_DIR/$CONFIG.json"
 
     if [[ ! -s "$BOS_CONFIG_DIR/$CONFIG.json" ]]; then
         rm -f "$BOS_CONFIG_DIR/$CONFIG.json"
