@@ -274,7 +274,7 @@ function group_build_images {
 	    echo "$0 group build_images <OPTIONS> <group list>"
 	    echo "OPTIONS:"
 	    echo "\t--map : update the bos templates with the new image(s) that are built"
-	    echo "\t--nocache : Do ot grab bare images from the cache"
+	    echo "\t--cache : Grab bare images from the cache(WARNING: Cache info is stored locally only)"
 	    return 1
 	fi
     done
