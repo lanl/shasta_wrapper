@@ -93,7 +93,7 @@ function refresh_bos_raw {
     if [[ -n "$BOS_RAW" && "$1" != '--force' ]]; then
         return 0
     fi
-    BOS_RAW=$(rest_api_query "bos/v1/sessiontemplate")
+    BOS_RAW=$(rest_api_query "bos/v2/sessiontemplates")
     if [[ -z "$BOS_RAW" || $? -ne 0 ]]; then
        error "${COLOR_RED}Error retrieving bos data: $BOS_RAW"
        BOS_RAW=""
@@ -164,7 +164,7 @@ function bos_describe {
         echo "USAGE: $0 bos describe [bos config]"
 	return 1
     fi
-    rest_api_query "bos/v1/sessiontemplate/$1"
+    rest_api_query "bos/v2/sessiontemplates/$1"
     return $?
 }
 
@@ -175,7 +175,7 @@ function bos_delete {
         echo "USAGE: $0 bos delete [bos config]"
 	return 1
     fi
-    rest_api_delete "bos/v1/sessiontemplate/$1"
+    rest_api_delete "bos/v2/sessiontemplates/$1"
     return $?
 }
 
@@ -219,7 +219,7 @@ function bos_clone {
 
     bos_describe $SRC | jq 'del(.name)' | jq 'del(.tenant)' > "$TMPFILE"
 
-    cray bos sessiontemplates create --file "$TMPFILE" --format json $DEST
+    cray bos v2 sessiontemplates create --file "$TMPFILE" --format json $DEST
     set +e
 }
 
