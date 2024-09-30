@@ -508,9 +508,11 @@ function image_configure {
     ## Setup cfs job id
     # We need a group that's lowercase and only containers certain characters
     # that cfs accepts to use it as the cfs job id
-    SESSION_NAME="$GROUP"`date +%M`
+    if [[ -z "$SESSION_NAME" ]]; then
+      SESSION_NAME="${GROUP_NAMES[0]}"`date +%M`
+    fi
     # Sanitize session name
-    local SESSION_NAME_SANITIZED=$(echo "$SESSION_NAME" | awk '{print tolower($0)}' | sed 's/[^a-z0-9]//g')
+    local SESSION_NAME_SANITIZED=$(echo "$SESSION_NAME" | awk '{print tolower($0)}' | sed 's/[^a-z0-9.\-]//g')
 
     # Delete any existing cfs session that has the same
     # name to ensure we don't screw things up
