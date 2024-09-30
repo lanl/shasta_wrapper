@@ -43,6 +43,10 @@ function bos {
             shift
             bos_edit "$@"
             ;;
+        job*)
+            shift
+            bos_job "$@"
+            ;;
         li*)
             shift
             bos_list "$@"
@@ -78,6 +82,7 @@ function bos_help {
     echo -e "\tconfig [template] [nodes|groups] : Configure the given nodes with the given bos template"
     echo -e "\tedit [template] : edit a bos session template"
     echo -e "\tdescribe [template] : (same as show)"
+    echo -e "\tjob [action] : bos job information/actions"
     echo -e "\tlist : show all bos session templates"
     echo -e "\treboot [template] [nodes|groups] : reboot a given node into the given bos template"
     echo -e "\tshutdown [template] [nodes|groups] : shutdown a given node into the given bos template"
@@ -354,7 +359,7 @@ function bos_summary {
 	if [[ "$LONG" -eq 0 ]]; then
             echo -e "${OUTPUT[$N_GROUP]}" | sort | uniq -c
         else
-            echo -e "${OUTPUT[$N_GROUP]}" 
+            echo -e "${OUTPUT[$N_GROUP]}"
 	fi
 	echo
     done
