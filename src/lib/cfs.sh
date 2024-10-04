@@ -470,7 +470,7 @@ function cfs_update_git {
 
     echo "cloning $LAYER_URL"
     cd "$TMPDIR"
-    git clone "$URL" "$TMPDIR/$LAYER" || return 1
+    git clone --quiet "$URL" "$TMPDIR/$LAYER" || return 1
     cd "$TMPDIR/$LAYER"
     git -c advice.detachedHead=false checkout "$GIT_TARGET" || return 1
 
