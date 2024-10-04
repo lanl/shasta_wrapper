@@ -55,6 +55,7 @@ function bos_job_help {
     echo -e "\tdelete <--all|--complete> [job] : delete all, completed or specified bos jobs"
     echo -e "\tdescribe [job] : (same as show)"
     echo -e "\tlist <-s> : list bos jobs"
+    echo -e "\tlog [job] : Watch Bos job status until completed"
     echo -e "\tshow [job] : shows all info on a given bos"
 
     exit 1
@@ -161,5 +162,29 @@ function bos_job_status {
     bos_job_exit_if_not_valid "$JOB" || return $?
 
     cray bos sessions status list --format json "$JOB"
+    return $?
+}
+
+## bos_job_log
+# follow/show the status of the bos job until complete 
+function bos_job_log {
+    local JOB="$1"
+    if [[ -z "$JOB" ]]; then
+        echo "USAGE: $0 bos job log [jobid]"
+        return 1
+    fi
+    bos_job_exit_if_not_valid "$JOB" || return $?
+    OUTPUT=$(cray bos sessions status list --format json "$JOB")
+
+    # use a while statement to check if the output has a null "end_time"
+    # if null print current status output at interval of sleep + 4-6 secs for the api delay to update output
+    while ! echo ${OUTPUT} |jq --exit-status  '.timing |.end_time' >/dev/null
+         do echo "********** Watching Job $JOB Status **********"
+            echo $OUTPUT |jq
+            sleep 6
+            OUTPUT=$(cray bos sessions status list --format json "$JOB")
+            clear
+         done
+    echo $OUTPUT |jq
     return $?
 }
